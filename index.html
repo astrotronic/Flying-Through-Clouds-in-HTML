@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Elite GPU Ocean Simulation - Throttle & Audio Control</title>
+    <style>
+        /* Reset and enforce full-screen, screensaver-like behavior */
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* Common UI Styling */
+        .glass-panel {
+            background: linear-gradient(145deg, rgba(30, 30, 30, 0.85), rgba(15, 15, 15, 0.95));
+            border: 1px solid #444;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), inset 0 0 10px rgba(0,0,0,0.5);
+            backdrop-filter: blur(5px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            z-index: 10;
+        }
+
+        /* Tactical Throttle UI Overlay */
+        #throttle-container {
+            position: absolute;
+            right: 40px;
+            top: 40%;
+            transform: translateY(-50%);
+            padding: 25px 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #throttle-container.hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(-50%) translateX(50px);
+        }
+
+        .throttle-label {
+            color: #00ffcc;
+            font-size: 14px;
+            font-weight: bold;
+            letter-spacing: 1px;
+            margin: 15px 0;
+            text-shadow: 0 0 8px rgba(0, 255, 204, 0.5);
+        }
+
+        .throttle-neutral {
+            color: #888;
+            font-size: 10px;
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            right: 45px;
+        }
+
+        /* Audio Controls Overlay */
+        #audio-controls {
+            position: absolute;
+            bottom: 60px;
+            right: 40px;
+            padding: 15px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        #audio-controls.hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: translateX(50px);
+        }
+
+        .audio-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 15px;
+        }
+
+        .audio-label {
+            color: #ccc;
+            font-size: 12px;
+            font-weight: bold;
+            width: 50px;
+            text-transform: uppercase;
+        }
+
+        /* Cross-browser Vertical Slider Styling */
+        input[type=range][orient=vertical] {
+            appearance: slider-vertical;
+            -webkit-appearance: slider-vertical;
+            width: 8px;
+            height: 250px;
+            background: #111;
+            border: 1px solid #333;
+            border-radius: 4px;
+            outline: none;
+            box-shadow: inset 0 0 5px rgba(0,0,0,1);
+        }
+
+        /* Cross-browser Horizontal Slider Styling */
+        input[type=range].horizontal {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 120px;
+            height: 6px;
+            background: #111;
+            border: 1px solid #333;
+            border-radius: 4px;
+            outline: none;
+            box-shadow: inset 0 0 5px rgba(0,0,0,1);
+        }
+
+        /* Custom WebKit Thumbs */
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 40px;
+            height: 24px;
+            background: linear-gradient(to right, #444, #777, #444);
+            border: 2px solid #222;
+            border-radius: 4px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.6), 0 0 15px rgba(0, 255, 204, 0.2);
+            transition: background 0.1s;
+        }
+
+        input[type=range].horizontal::-webkit-slider-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+        }
+
+        input[type=range]::-webkit-slider-thumb:active {
+            background: linear-gradient(to right, #555, #888, #555);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.8), 0 0 20px rgba(0, 255, 204, 0.6);
+        }
+
+        /* Firefox Support */
+        input[type=range]::-moz-range-thumb {
+            width: 40px;
+            height: 24px;
+            background: linear-gradient(to right, #444, #777, #444);
+            border: 2px solid #222;
+            border-radius: 4px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.6), 0 0 15px rgba(0, 255, 204, 0.2);
+        }
+        
+        input[type=range].horizontal::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+        }
+
+        /* HUD Text */
+        .hud-text {
+            position: absolute;
+            bottom: 25px;
+            right: 40px;
+            text-align: right;
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 12px;
+            pointer-events: none;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        .hud-text.hidden {
+            opacity: 0;
+            transform: translateX(50px);
+        }
+        
+        #init-prompt {
+            color: #00ffcc;
+            font-weight: bold;
+            opacity: 0.8;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.4; }
+            50% { opacity: 1; }
+            100% { opacity: 0.4; }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="glcanvas"></canvas>
+
+    <div id="throttle-container" class="glass-panel">
+        <div class="throttle-label">AHEAD</div>
+        <input type="range" id="throttle" orient="vertical" min="-3" max="3" step="0.05" value="1">
+        <div class="throttle-neutral">- N -</div>
+        <div class="throttle-label">ASTERN</div>
+    </div>
+
+    <div id="audio-controls" class="glass-panel">
+        <div class="audio-row">
+            <div class="audio-label">Engine</div>
+            <input type="range" id="vol-engine" class="horizontal" min="0" max="1" step="0.01" value="0.6">
+        </div>
+        <div class="audio-row">
+            <div class="audio-label">Ocean</div>
+            <input type="range" id="vol-ocean" class="horizontal" min="0" max="1" step="0.01" value="0.7">
+        </div>
+    </div>
+    
+    <div id="hud-text" class="hud-text">
+        <span id="init-prompt">Interact to start audio.</span><br>
+        Press [ ESC ] to toggle UI overlays.
+    </div>
+
+    <script>
+        /**
+         * 1. WebGL Setup and Architecture
+         */
+        const canvas = document.getElementById('glcanvas');
+        const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+
+        if (!gl) {
+            console.error("WebGL is not supported by your browser.");
+            document.body.innerHTML = "<h1 style='color:white; text-align:center; margin-top:20vh;'>WebGL is required for this simulation.</h1>";
+        }
+
+        const vertexShaderSource = `
+            attribute vec2 a_position;
+            void main() {
+                gl_Position = vec4(a_position, 0.0, 1.0);
+            }
+        `;
+
+        const fragmentShaderSource = `
+            #ifdef GL_ES
+            precision highp float;
+            #endif
+
+            uniform vec2 u_resolution;
+            uniform float u_time;
+
+            const int NUM_STEPS = 8;
+            const float PI      = 3.141592;
+            const float EPSILON = 1e-3;
+
+            const int ITER_GEOMETRY = 3;
+            const int ITER_FRAGMENT = 5;
+            const float SEA_HEIGHT = 0.6;
+            const float SEA_CHOPPY = 4.0;
+            const float SEA_SPEED = 0.8;
+            const float SEA_FREQ = 0.16;
+            const vec3 SEA_BASE = vec3(0.0, 0.09, 0.18);
+            const vec3 SEA_WATER_COLOR = vec3(0.8, 0.9, 0.6) * 0.6;
+            const mat2 octave_m = mat2(1.6, 1.2, -1.2, 1.6);
+
+            float hash(vec2 p) {
+                float h = dot(p, vec2(127.1, 311.7));
+                return fract(sin(h) * 43758.5453123);
+            }
+
+            float noise(vec2 p) {
+                vec2 i = floor(p);
+                vec2 f = fract(p);
+                vec2 u = f * f * (3.0 - 2.0 * f);
+                return -1.0 + 2.0 * mix(
+                    mix(hash(i + vec2(0.0,0.0)), hash(i + vec2(1.0,0.0)), u.x),
+                    mix(hash(i + vec2(0.0,1.0)), hash(i + vec2(1.0,1.0)), u.x),
+                    u.y
+                );
+            }
+
+            float sea_octave(vec2 uv, float choppy) {
+                uv += noise(uv);
+                vec2 wv = 1.0 - abs(sin(uv));
+                vec2 swv = abs(cos(uv));
+                wv = mix(wv, swv, wv);
+                return pow(1.0 - pow(wv.x * wv.y, 0.65), choppy);
+            }
+
+            float map(vec3 p) {
+                float freq = SEA_FREQ;
+                float amp = SEA_HEIGHT;
+                float choppy = SEA_CHOPPY;
+                vec2 uv = p.xz;
+                uv.x *= 0.75;
+                float time = 1.0 + u_time * SEA_SPEED;
+
+                float d, h = 0.0;
+                for(int i = 0; i < ITER_GEOMETRY; i++) {
+                    d = sea_octave((uv + time) * freq, choppy);
+                    d += sea_octave((uv - time) * freq, choppy);
+                    h += d * amp;
+                    uv *= octave_m;
+                    freq *= 1.9;
+                    amp *= 0.22;
+                    choppy = mix(choppy, 1.0, 0.2);
+                }
+                return p.y - h;
+            }
+
+            float map_detailed(vec3 p) {
+                float freq = SEA_FREQ;
+                float amp = SEA_HEIGHT;
+                float choppy = SEA_CHOPPY;
+                vec2 uv = p.xz;
+                uv.x *= 0.75;
+                float time = 1.0 + u_time * SEA_SPEED;
+
+                float d, h = 0.0;
+                for(int i = 0; i < ITER_FRAGMENT; i++) {
+                    d = sea_octave((uv + time) * freq, choppy);
+                    d += sea_octave((uv - time) * freq, choppy);
+                    h += d * amp;
+                    uv *= octave_m;
+                    freq *= 1.9;
+                    amp *= 0.22;
+                    choppy = mix(choppy, 1.0, 0.2);
+                }
+                return p.y - h;
+            }
+
+            vec3 getNormal(vec3 p, float eps) {
+                vec3 n;
+                n.y = map_detailed(p);
+                n.x = map_detailed(vec3(p.x + eps, p.y, p.z)) - n.y;
+                n.z = map_detailed(vec3(p.x, p.y, p.z + eps)) - n.y;
+                n.y = eps;
+                return normalize(n);
+            }
+
+            float heightMapTracing(vec3 ori, vec3 dir, out vec3 p) {
+                float tm = 0.0;
+                float tx = 1000.0;
+                float hx = map(ori + dir * tx);
+                if(hx > 0.0) {
+                    p = ori + dir * tx;
+                    return tx;
+                }
+                float hm = map(ori + dir * tm);
+                float tmid = 0.0;
+                for(int i = 0; i < NUM_STEPS; i++) {
+                    tmid = mix(tm, tx, hm / (hm - hx));
+                    p = ori + dir * tmid;
+                    float hmid = map(p);
+                    if(hmid < 0.0) {
+                        tx = tmid;
+                        hx = hmid;
+                    } else {
+                        tm = tmid;
+                        hm = hmid;
+                    }
+                }
+                return tmid;
+            }
+
+            float fbm_clouds(vec2 p) {
+                float f = 0.0;
+                float amp = 0.5;
+                mat2 m = mat2(0.8, 0.6, -0.6, 0.8);
+                for(int i = 0; i < 4; i++) {
+                    f += amp * noise(p);
+                    p = m * p * 2.0;
+                    amp *= 0.5;
+                }
+                return f;
+            }
+
+            vec3 getSkyColor(vec3 e) {
+                float origY = e.y;
+                e.y = (max(e.y, 0.0) * 0.8 + 0.2) * 0.8;
+                vec3 sky = vec3(pow(1.0 - e.y, 2.0), 1.0 - e.y, 0.6 + (1.0 - e.y) * 0.4) * 1.1;
+
+                vec3 sunDir = normalize(vec3(0.0, 1.0, 0.8));
+                float sun = clamp(dot(e, sunDir), 0.0, 1.0);
+                sky += vec3(1.0, 0.8, 0.5) * pow(sun, 512.0);      
+                sky += vec3(1.0, 0.6, 0.2) * pow(sun, 64.0) * 0.3; 
+
+                if (origY > 0.0) {
+                    float altitude = 2.5; 
+                    vec2 uv = e.xz * (altitude / max(origY, 0.03));
+                    uv += u_time * 0.15; 
+                    
+                    float q = fbm_clouds(uv * 0.15);
+                    float cloudVal = q * 0.5 + 0.5; 
+                    
+                    float coverage = 0.42; 
+                    float density = smoothstep(coverage, coverage + 0.35, cloudVal);
+                    
+                    if (density > 0.0) {
+                        vec2 sunDir2D = normalize(sunDir.xz); 
+                        float q_light = fbm_clouds(uv * 0.15 + sunDir2D * 0.8);
+                        float shadow = smoothstep(coverage - 0.2, coverage + 0.5, q_light * 0.5 + 0.5);
+                        
+                        vec3 darkCloud = vec3(0.4, 0.45, 0.55);
+                        vec3 lightCloud = vec3(1.0, 0.95, 0.85); 
+                        vec3 cColor = mix(darkCloud, lightCloud, shadow);
+                        
+                        float silverLining = pow(sun, 8.0) * smoothstep(coverage + 0.2, coverage, cloudVal);
+                        cColor += vec3(1.0, 0.9, 0.7) * silverLining * 0.5;
+                        
+                        float horizonFade = smoothstep(0.05, 0.25, origY);
+                        density *= horizonFade;
+                        
+                        sky = mix(sky, cColor, density * 0.95);
+                    }
+                }
+                
+                return sky;
+            }
+
+            vec3 getSeaColor(vec3 p, vec3 n, vec3 l, vec3 eye, vec3 dist) {
+                float fresnel = clamp(1.0 - dot(n, -eye), 0.0, 1.0);
+                fresnel = pow(fresnel, 3.0) * 0.5;
+
+                vec3 reflected = getSkyColor(reflect(eye, n));
+                vec3 refracted = SEA_BASE + vec3(max(dot(n, l), 0.0)) * SEA_WATER_COLOR * 0.12;
+
+                vec3 color = mix(refracted, reflected, fresnel);
+
+                float atten = max(1.0 - dot(dist, dist) * 0.001, 0.0);
+                color += SEA_WATER_COLOR * (p.y - SEA_HEIGHT) * 0.18 * atten;
+
+                float specular = pow(max(dot(reflect(eye, n), l), 0.0), 60.0) * fresnel;
+                color += vec3(specular);
+
+                return color;
+            }
+
+            void main() {
+                vec2 uv = gl_FragCoord.xy / u_resolution.xy;
+                uv = uv * 2.0 - 1.0;
+                uv.x *= u_resolution.x / u_resolution.y;
+
+                float time = u_time * 0.3;
+                vec3 ori = vec3(0.0, 3.5, time * 5.0); 
+                vec3 dir = normalize(vec3(uv.xy, -2.0)); 
+
+                float tilt = sin(time * 0.5) * 0.1;
+                mat2 rot = mat2(cos(tilt), -sin(tilt), sin(tilt), cos(tilt));
+                dir.xy *= rot;
+
+                vec3 p;
+                heightMapTracing(ori, dir, p);
+                vec3 dist = p - ori;
+                
+                vec3 n = getNormal(p, dot(dist, dist) * (0.1 / u_resolution.x));
+                
+                vec3 light = normalize(vec3(0.0, 1.0, 0.8));
+
+                vec3 color = mix(
+                    getSkyColor(dir),
+                    getSeaColor(p, n, light, dir, dist),
+                    pow(smoothstep(0.0, -0.02, dir.y), 0.2)
+                );
+
+                color = pow(color, vec3(0.65));
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+        function compileShader(gl, sourceCode, type) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, sourceCode);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error("Shader Compile Error: " + gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+
+        const vertexShader = compileShader(gl, vertexShaderSource, gl.VERTEX_SHADER);
+        const fragmentShader = compileShader(gl, fragmentShaderSource, gl.FRAGMENT_SHADER);
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+
+        const vertices = new Float32Array([
+            -1.0, -1.0,   1.0, -1.0,  -1.0,  1.0,
+            -1.0,  1.0,   1.0, -1.0,   1.0,  1.0
+        ]);
+
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+        const positionLocation = gl.getAttribLocation(program, "a_position");
+        gl.enableVertexAttribArray(positionLocation);
+        gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+        const resolutionLocation = gl.getUniformLocation(program, "u_resolution");
+        const timeLocation = gl.getUniformLocation(program, "u_time");
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        /**
+         * 2. Web Audio API Integration
+         */
+        let audioCtx, engineOsc, engineGain;
+        let oceanGain;
+        let audioInitialized = false;
+
+        function initAudio() {
+            if (audioInitialized) return;
+            
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+            // --- A. Procedural Engine Sound ---
+            engineOsc = audioCtx.createOscillator();
+            engineOsc.type = 'sawtooth';
+            
+            // Lowpass filter to make it sound muffled and deep
+            const engineFilter = audioCtx.createBiquadFilter();
+            engineFilter.type = 'lowpass';
+            engineFilter.frequency.value = 80; 
+
+            engineGain = audioCtx.createGain();
+            engineGain.gain.value = document.getElementById('vol-engine').value;
+
+            engineOsc.connect(engineFilter);
+            engineFilter.connect(engineGain);
+            engineGain.connect(audioCtx.destination);
+            engineOsc.start();
+
+            // --- B. Procedural Ocean Sound ---
+            // Create 2 seconds of pure white noise
+            const bufferSize = audioCtx.sampleRate * 2;
+            const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const output = noiseBuffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                output[i] = Math.random() * 2 - 1;
+            }
+
+            const oceanNoise = audioCtx.createBufferSource();
+            oceanNoise.buffer = noiseBuffer;
+            oceanNoise.loop = true;
+
+            // Bandpass filter to sound like heavy water
+            const oceanFilter = audioCtx.createBiquadFilter();
+            oceanFilter.type = 'bandpass';
+            oceanFilter.frequency.value = 350;
+            oceanFilter.Q.value = 0.3;
+
+            // Volume modulation to simulate waves crashing
+            const waveModulator = audioCtx.createGain();
+            waveModulator.gain.value = 0.75; // Increased base level so it never fades to silence
+
+            const waveLFO = audioCtx.createOscillator();
+            waveLFO.type = 'sine';
+            waveLFO.frequency.value = 0.16; // Exact match to shader SEA_FREQ
+
+            const waveLFOScale = audioCtx.createGain();
+            waveLFOScale.gain.value = 0.25; // Decreased depth so it oscillates between 0.5 and 1.0
+
+            waveLFO.connect(waveLFOScale);
+            waveLFOScale.connect(waveModulator.gain);
+
+            // Master Ocean Volume
+            oceanGain = audioCtx.createGain();
+            oceanGain.gain.value = document.getElementById('vol-ocean').value;
+
+            // Route Ocean Audio
+            oceanNoise.connect(oceanFilter);
+            oceanFilter.connect(waveModulator);
+            waveModulator.connect(oceanGain);
+            oceanGain.connect(audioCtx.destination);
+            
+            oceanNoise.start();
+            waveLFO.start();
+
+            // Clean up HUD prompt
+            const initPrompt = document.getElementById('init-prompt');
+            if (initPrompt) initPrompt.style.display = 'none';
+
+            audioInitialized = true;
+            updateEngineAudio(); // Set initial pitch
+        }
+
+        // Initialize audio on first user interaction (browser policy requirement)
+        window.addEventListener('click', initAudio, { once: true });
+        window.addEventListener('input', initAudio, { once: true });
+
+        /**
+         * 3. UI Interactions & Event Listeners
+         */
+        const throttleContainer = document.getElementById('throttle-container');
+        const audioControls = document.getElementById('audio-controls');
+        const throttleInput = document.getElementById('throttle');
+        const hudText = document.getElementById('hud-text');
+        
+        let speedMultiplier = parseFloat(throttleInput.value);
+
+        // Update Engine Pitch based on Throttle
+        function updateEngineAudio() {
+            if (!audioInitialized) return;
+            // Base idle frequency is 30Hz. Max speed adds up to 60Hz.
+            const targetFreq = 30 + (Math.abs(speedMultiplier) * 20);
+            // Smoothly ramp to the new frequency to simulate engine revving
+            engineOsc.frequency.setTargetAtTime(targetFreq, audioCtx.currentTime, 0.2);
+        }
+
+        throttleInput.addEventListener('input', (e) => {
+            speedMultiplier = parseFloat(e.target.value);
+            updateEngineAudio();
+        });
+
+        // Volume Sliders
+        document.getElementById('vol-engine').addEventListener('input', (e) => {
+            if(audioInitialized) engineGain.gain.setTargetAtTime(parseFloat(e.target.value), audioCtx.currentTime, 0.1);
+        });
+
+        document.getElementById('vol-ocean').addEventListener('input', (e) => {
+            if(audioInitialized) oceanGain.gain.setTargetAtTime(parseFloat(e.target.value), audioCtx.currentTime, 0.1);
+        });
+
+        // Toggle UI visibility with 'Escape'
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                throttleContainer.classList.toggle('hidden');
+                audioControls.classList.toggle('hidden');
+                hudText.classList.toggle('hidden');
+            }
+        });
+
+        /**
+         * 4. Render Loop
+         */
+        let lastTime = performance.now();
+        let customTime = 0.0; 
+
+        function render() {
+            const currentTime = performance.now();
+            const deltaTime = (currentTime - lastTime) / 1000.0;
+            lastTime = currentTime;
+
+            customTime += deltaTime * speedMultiplier;
+
+            gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
+            gl.uniform1f(timeLocation, customTime);
+
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+            requestAnimationFrame(render);
+        }
+
+        render();
+    </script>
+</body>
+</html>
